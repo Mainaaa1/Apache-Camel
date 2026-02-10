@@ -1,13 +1,13 @@
-package com.example.demo;
+package com.example.camel;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class CamelAppApplication {
+public class CamelApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(CamelAppApplication.class, args);
+		SpringApplication.run(CamelApplication.class, args);
 	}
 
 }
