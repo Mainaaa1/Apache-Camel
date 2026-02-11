@@ -1,212 +1,169 @@
-# Day 2 — Camel Routes
+# Day 3 — Processors & Transformers
 
-**Week:** 5  
-**Theme:** Apache Camel  
-**Focus:** Defining Routes & Message Flow
+**Week 5 — Apache Camel**  
+**Date:** 11 Feb 2026  
+**Focus:** Custom Processing & Message Transformation
 
 ---
 
 ## Overview
 
-Day 2 moves from **integration theory** to **actual Apache Camel code**.
+On Day 3, the focus shifted from defining routes to transforming messages within those routes.
 
-The goal is to understand **how Camel routes are written**, how messages move through a route, and how Camel integrates with **Spring Boot**.
+If Day 2 was about **where messages go**,  
+Day 3 is about **what happens to messages along the way**.
 
-If Day 1 answered *“why integration frameworks exist”*,  
-Day 2 answers *“how Camel actually works.”*
+Apache Camel achieves this using **Processors** and the **Exchange** object.
 
 ---
 
-## What Is a Camel Route?
+## Key Concepts Covered
 
-A **route** defines the path a message follows from a **source** to one or more **destinations**.
+- The `Processor` interface
+- The `Exchange` object
+- Message body transformation
+- Header manipulation
+- Clean separation between routing and business logic
 
-In Camel, a route always starts with:
+---
+
+## Understanding the Exchange
+
+Every message in Camel is wrapped inside an `Exchange`.
+
+The Exchange contains:
+
+- Message body
+- Headers
+- Properties
+- Context metadata
+
+Example:
 
 ```java
-from(...)
+exchange.getIn().getBody();
+exchange.getIn().setBody(newBody);
+exchange.getIn().setHeader("processed", true);
+exchange.setProperty("trackingId", "abc-123");
 ```
-and continues with one or more processing steps:
+Camel automatically creates and passes the Exchange through the route pipeline.
+
+### Creating a Custom Processor
+
+Example: Converting message content to uppercase.
 ```java
-to(...)
-```
-
-Conceptually:
-```java
-Source → Processing → Destination
-```
-
-### Basic Route Structure
-
-A minimal Camel route looks like this:
-
-```java
-from("timer:hello?period=5000")
-    .log("Hello from Apache Camel");
-```
-
-This route:
-
-- Triggers every 5 seconds
-
-- Logs a message
-
-- Requires no external system
-
-## Camel with Spring Boot
-
-Camel integrates seamlessly with Spring Boot.
-
-### Key Dependencies
-
-- camel-spring-boot-starter
-
-- Spring Boot Web (optional)
-
-- Java DSL for routes
-
-Once Camel is on the classpath:
-
-- Routes are auto-discovered
-
-- No manual bootstrapping required
-
-- Lifecycle is managed by Spring
-
-### Creating a Route Class
-
-Routes are defined by extending RouteBuilder.
-```java
-import org.apache.camel.builder.RouteBuilder;
-import org.springframework.stereotype.Component;
-
 @Component
-public class SimpleRoute extends RouteBuilder {
+public class UppercaseProcessor implements Processor {
 
     @Override
-    public void configure() {
-        from("timer:demo?period=3000")
-            .log("Camel route is running...");
+    public void process(Exchange exchange) {
+
+        String body = exchange.getIn().getBody(String.class);
+
+        if (body != null) {
+            exchange.getIn().setBody(body.toUpperCase());
+        }
     }
 }
 ```
-What’s Happening
 
-- @Component → Spring registers the route
+What this does:
 
-- configure() → Route definition
+- Reads the incoming message body
 
-- timer: → Built-in Camel endpoint
+- Transforms it
 
-- log() → Logs message to console
+- Replaces the body in the Exchange
 
-### Common Camel Endpoints
-
-Camel supports hundreds of endpoints. Common ones include:
-
-| Endpoint  | Purpose                        |
-| --------- | ------------------------------ |
-| `timer:`  | Trigger messages on a schedule |
-| `direct:` | Synchronous in-memory routing  |
-| `file:`   | Read/write files               |
-| `http:`   | HTTP calls                     |
-| `log:`    | Logging                        |
-| `jms:`    | Messaging queues               |
-
-
-Example:
+Using the Processor in a Route
 ```java
-from("direct:start")
-    .to("log:processing")
-    .to("direct:end");
-```
-### Understanding Exchanges
-
-Camel wraps each message inside an Exchange.
-
-An Exchange contains:
-
-- Message body
-
-- Headers
-
-- Properties
-
-- Metadata
-
-Camel automatically:
-
-- Creates the exchange
-
-- Passes it through the route
-
-- Handles lifecycle
-
-You rarely create exchanges manually.
-
-Route Flow Example
-```java
-from("file:input")
-    .log("File received")
+from("file:input?noop=true")
+    .routeId("day3-transform-route")
+    .log("Original message: ${body}")
+    .process(uppercaseProcessor)
+    .log("Transformed message: ${body}")
     .to("file:output");
 ```
 
-This route:
-
-- Watches the input directory
-
-- Logs when a file appears
-
-- Moves it to output
-
-- No polling logic. No file handling code. Camel handles it.
-
-**Route Identification**
-
-You can name routes explicitly:
-```java
-from("timer:sample?period=2000")
-    .routeId("sample-timer-route")
-    .log("Running sample route");
+**Execution Flow**
+```pgsql
+Input Folder → Log Original → Transform → Log Result → Output Folder
 ```
 
-Useful for:
+**Inline Processor Alternative**
 
-- Debugging
+Instead of a separate class:
+```java
+.process(exchange -> {
+    String body = exchange.getIn().getBody(String.class);
+    exchange.getIn().setBody(body.toUpperCase());
+})
+```
 
-- Monitoring
+However, for maintainable systems:
 
-- Metrics
+- Keep routes declarative
 
-## Why Routes Matter
+- Move business logic into dedicated Processor classes
 
-Routes:
+- Follow separation of concerns
 
-- Represent business workflows
+### Why This Matters
 
-- Encapsulate integration logic
+Processors allow you to implement:
 
-- Are easy to read and reason about
+- Data transformations (JSON ↔ XML)
 
-- Reduce boilerplate drastically
+- Enrichment
 
-- A good Camel route reads like documentation.
+- Validation logic
 
-## Common Beginner Mistakes
+- Custom routing decisions
 
-- Forgetting @Component
-- Mis-typed endpoint URIs
-- Expecting HTTP routes without Spring Web
-- Overloading routes with logic (use processors later)
+- Logging and auditing
 
-## Key Takeaways
+- Header-based logic
 
-- Routes are the heart of Apache Camel
+This is what makes Camel powerful in enterprise integration systems.
 
-- from() defines the source
+### Architectural Insight
 
-- to() defines the destination
+- Camel encourages a clean architecture:
 
-- Camel handles plumbing automatically
+- Routes define the flow
 
-- Spring Boot manages lifecycle
+- Processors contain logic
+
+- Exchange carries data
+
+This separation improves:
+
+- Maintainability
+
+- Testability
+
+- Scalability
+
+### What Was Achieved Today
+
+- Implemented a custom Processor
+
+- Manipulated the Exchange body
+
+- Added logging before and after transformation
+
+- Practiced clean route design
+
+- Understood internal message handling
+
+### Preparation for Day 4
+
+Next, the integration expands beyond file routing into:
+
+- HTTP endpoints
+
+- Database connectivity
+
+- External service calls
+
+Day 3 establishes the foundation required for building real integration pipelines.
