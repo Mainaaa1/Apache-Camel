@@ -1,212 +1,239 @@
-# Day 2 — Camel Routes
-
-**Week:** 5  
-**Theme:** Apache Camel  
-**Focus:** Defining Routes & Message Flow
-
----
+# Apache Camel Integration Demo
 
 ## Overview
 
-Day 2 moves from **integration theory** to **actual Apache Camel code**.
+This project demonstrates enterprise integration patterns using **Apache Camel 4.17.0** with **Spring Boot**. It showcases file processing, HTTP integration, and database interaction within a modular, production-style architecture.
 
-The goal is to understand **how Camel routes are written**, how messages move through a route, and how Camel integrates with **Spring Boot**.
+The application includes:
 
-If Day 1 answered *“why integration frameworks exist”*,  
-Day 2 answers *“how Camel actually works.”*
+- File ingestion and transformation
+- Scheduled HTTP API consumption
+- Database inserts using JDBC
+- Custom processors
+- H2 in-memory database
+- Structured and separated route definitions
 
 ---
 
-## What Is a Camel Route?
+## Tech Stack
 
-A **route** defines the path a message follows from a **source** to one or more **destinations**.
+- Java 21
+- Spring Boot
+- Apache Camel (camel-spring-boot-starter)
+- H2 Database
+- Maven
 
-In Camel, a route always starts with:
+---
 
-```java
-from(...)
+## Project Structure
+
 ```
-and continues with one or more processing steps:
-```java
-to(...)
-```
-
-Conceptually:
-```java
-Source → Processing → Destination
-```
-
-### Basic Route Structure
-
-A minimal Camel route looks like this:
-
-```java
-from("timer:hello?period=5000")
-    .log("Hello from Apache Camel");
-```
-
-This route:
-
-- Triggers every 5 seconds
-
-- Logs a message
-
-- Requires no external system
-
-## Camel with Spring Boot
-
-Camel integrates seamlessly with Spring Boot.
-
-### Key Dependencies
-
-- camel-spring-boot-starter
-
-- Spring Boot Web (optional)
-
-- Java DSL for routes
-
-Once Camel is on the classpath:
-
-- Routes are auto-discovered
-
-- No manual bootstrapping required
-
-- Lifecycle is managed by Spring
-
-### Creating a Route Class
-
-Routes are defined by extending RouteBuilder.
-```java
-import org.apache.camel.builder.RouteBuilder;
-import org.springframework.stereotype.Component;
-
-@Component
-public class SimpleRoute extends RouteBuilder {
-
-    @Override
-    public void configure() {
-        from("timer:demo?period=3000")
-            .log("Camel route is running...");
-    }
-}
-```
-What’s Happening
-
-- @Component → Spring registers the route
-
-- configure() → Route definition
-
-- timer: → Built-in Camel endpoint
-
-- log() → Logs message to console
-
-### Common Camel Endpoints
-
-Camel supports hundreds of endpoints. Common ones include:
-
-| Endpoint  | Purpose                        |
-| --------- | ------------------------------ |
-| `timer:`  | Trigger messages on a schedule |
-| `direct:` | Synchronous in-memory routing  |
-| `file:`   | Read/write files               |
-| `http:`   | HTTP calls                     |
-| `log:`    | Logging                        |
-| `jms:`    | Messaging queues               |
-
-
-Example:
-```java
-from("direct:start")
-    .to("log:processing")
-    .to("direct:end");
-```
-### Understanding Exchanges
-
-Camel wraps each message inside an Exchange.
-
-An Exchange contains:
-
-- Message body
-
-- Headers
-
-- Properties
-
-- Metadata
-
-Camel automatically:
-
-- Creates the exchange
-
-- Passes it through the route
-
-- Handles lifecycle
-
-You rarely create exchanges manually.
-
-Route Flow Example
-```java
-from("file:input")
-    .log("File received")
-    .to("file:output");
+camel/
+│── pom.xml
+│
+└── src/
+    └── main/
+        ├── java/com/example/camel/
+        │   │── CamelIntegrationApplication.java
+        │   │
+        │   ├── routes/
+        │   │     ├── FileRoute.java
+        │   │     ├── HttpRoute.java
+        │   │     └── DatabaseRoute.java
+        │   │
+        │   ├── processors/
+        │   │     ├── LoggingProcessor.java
+        │   │     └── UpperCaseProcessor.java
+        │   │
+        │   └── config/
+        │         └── CamelConfig.java
+        │
+        └── resources/
+            │── application.properties
+            │
+            └── data/
+                ├── input/
+                └── output/
 ```
 
-This route:
+---
 
-- Watches the input directory
+## Features
 
-- Logs when a file appears
+### 1. File Integration
 
-- Moves it to output
+**Route ID:** `file-route`
 
-- No polling logic. No file handling code. Camel handles it.
+- Reads files from:
+  ```
+  src/main/resources/data/input
+  ```
+- Logs file content
+- Converts content to uppercase
+- Writes processed file to:
+  ```
+  src/main/resources/data/output
+  ```
 
-**Route Identification**
+Demonstrates:
+- Camel File Component
+- Custom Processors
+- Message transformation
 
-You can name routes explicitly:
-```java
-from("timer:sample?period=2000")
-    .routeId("sample-timer-route")
-    .log("Running sample route");
+---
+
+### 2. HTTP Integration
+
+**Route ID:** `http-route`
+
+- Triggered every 60 seconds
+- Sends GET request to:
+  ```
+  https://jsonplaceholder.typicode.com/posts/1
+  ```
+- Logs HTTP response
+
+Demonstrates:
+- Timer component
+- HTTP component
+- Scheduled polling
+
+---
+
+### 3. Database Integration
+
+**Route ID:** `database-route`
+
+- Executes every 30 seconds
+- Inserts record into H2 in-memory database
+- Uses Camel JDBC component
+
+Demonstrates:
+- Timer-based scheduling
+- JDBC integration
+- DataSource configuration
+
+---
+
+## How to Run
+
+### 1. Clone the Repository
+
+```bash
+git clone <your-repo-url>
+cd camel-integration-demo
 ```
 
-Useful for:
+### 2. Build the Project
 
-- Debugging
+```bash
+mvn clean install
+```
 
-- Monitoring
+### 3. Run the Application
 
-- Metrics
+```bash
+mvn spring-boot:run
+```
 
-## Why Routes Matter
+or
 
-Routes:
+```bash
+java -jar target/camel-integration-demo.jar
+```
 
-- Represent business workflows
+---
 
-- Encapsulate integration logic
+## Testing File Route
 
-- Are easy to read and reason about
+1. Add a `.txt` file inside:
+   ```
+   src/main/resources/data/input
+   ```
+2. Start the application.
+3. Check:
+   ```
+   src/main/resources/data/output
+   ```
+The file content should be converted to uppercase.
 
-- Reduce boilerplate drastically
+---
 
-- A good Camel route reads like documentation.
+## Accessing H2 Console
 
-## Common Beginner Mistakes
+H2 console is enabled.
 
-- Forgetting @Component
-- Mis-typed endpoint URIs
-- Expecting HTTP routes without Spring Web
-- Overloading routes with logic (use processors later)
+URL:
+```
+http://localhost:8080/h2-console
+```
 
-## Key Takeaways
+JDBC URL:
+```
+jdbc:h2:mem:testdb
+```
 
-- Routes are the heart of Apache Camel
+Username:
+```
+sa
+```
 
-- from() defines the source
+Password:
+```
+(empty)
+```
 
-- to() defines the destination
+---
 
-- Camel handles plumbing automatically
+## Key Concepts Demonstrated
 
-- Spring Boot manages lifecycle
+- RouteBuilder abstraction
+- Custom Processor implementation
+- Dependency injection of processors
+- Component-based routing (file, http, jdbc)
+- Modular package structure
+- Spring-managed DataSource
+- Scheduled route execution
+
+---
+
+## Architecture Flow
+
+```
+File System → Processor → File System
+Timer → HTTP API → Log
+Timer → SQL Insert → H2 Database
+```
+
+Each integration concern is isolated into its own route for maintainability and scalability.
+
+---
+
+## Potential Enhancements
+
+- Add REST endpoints using Camel REST DSL
+- Implement error handling (onException, dead letter channel)
+- Add message queues (ActiveMQ, Kafka)
+- Replace H2 with PostgreSQL or MySQL
+- Add integration tests using Camel Test
+- Containerize using Docker
+- Implement centralized logging and monitoring
+
+---
+
+## Learning Outcomes
+
+After completing this project, you should understand:
+
+- How Apache Camel routes are structured
+- How to integrate multiple systems using Camel
+- How processors manipulate Exchange messages
+- How to schedule jobs with timer endpoints
+- How to perform database operations using Camel
+- How to structure enterprise integration applications
+
+---
+
+## License
+
+MIT License
