@@ -1,7 +1,8 @@
 package com.example.camel.routes;
 
-import com.example.camel.processors.OrderValidationProcessor;
+import com.example.camel.model.Order;
 import com.example.camel.processors.OrderTransformationProcessor;
+import com.example.camel.processors.OrderValidationProcessor;
 import org.apache.camel.builder.RouteBuilder;
 import org.springframework.stereotype.Component;
 
@@ -11,9 +12,8 @@ public class OrderIntegrationRoute extends RouteBuilder {
     private final OrderValidationProcessor validationProcessor;
     private final OrderTransformationProcessor transformationProcessor;
 
-    public OrderIntegrationRoute(
-            OrderValidationProcessor validationProcessor,
-            OrderTransformationProcessor transformationProcessor) {
+    public OrderIntegrationRoute(OrderValidationProcessor validationProcessor,
+                                 OrderTransformationProcessor transformationProcessor) {
         this.validationProcessor = validationProcessor;
         this.transformationProcessor = transformationProcessor;
     }
@@ -21,35 +21,35 @@ public class OrderIntegrationRoute extends RouteBuilder {
     @Override
     public void configure() {
 
-        // Global error handler
-        onException(Exception.class)
-            .log("Error processing order: ${exception.message}")
-            .handled(true)
-            .to("file:src/main/resources/data/error");
+        // Dead Letter Channel
+        errorHandler(deadLetterChannel("file:src/main/resources/data/error")
+                .maximumRedeliveries(3)
+                .redeliveryDelay(2000)
+                .retryAttemptedLogLevel(org.apache.camel.LoggingLevel.WARN));
 
         from("file:src/main/resources/data/orders?noop=true")
-            .routeId("order-integration-route")
+                .routeId("order-integration-route")
 
-            .log("Received Order File: ${file:name}")
+                .log("Processing file: ${file:name}")
 
-            // Step 1: Validate
-            .process(validationProcessor)
+                .process(validationProcessor)
+                .process(transformationProcessor)
 
-            // Step 2: Transform
-            .process(transformationProcessor)
+                .log("Transformed Order: ${body}")
 
-            // Step 3: Call external HTTP (simulation)
-            .setHeader("CamelHttpMethod", constant("GET"))
-            .to("https://jsonplaceholder.typicode.com/posts/1")
-            .log("External Service Response: ${body}")
+                // Content-Based Router
+                .choice()
+                    .when(simple("${body.amount} > 500"))
+                        .log("High value order detected")
+                        .setHeader("CamelHttpMethod", constant("GET"))
+                        .to("https://jsonplaceholder.typicode.com/posts/1")
+                        .log("HTTP Call Completed")
+                        .to("file:src/main/resources/data/archive/high-value")
+                    .otherwise()
+                        .log("Low value order detected")
+                        .to("file:src/main/resources/data/archive/low-value")
+                .end()
 
-            // Step 4: Save to DB
-            .setBody(simple("INSERT INTO orders (id, name, amount) VALUES (1,'Test',100)"))
-            .to("jdbc:dataSource")
-
-            // Step 5: Archive file
-            .to("file:src/main/resources/data/archive")
-
-            .log("Order processing complete");
+                .log("Route execution completed");
     }
 }
