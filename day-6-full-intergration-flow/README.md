@@ -1,169 +1,249 @@
-# Week 5 – Day 5  
-## Apache Camel Mini Integration Project
+# Week 5 – Day 6  
+# Advanced Routing & Error Handling in Apache Camel
 
 ---
 
 ## Overview
 
-Day 5 focused on building a complete integration flow using Apache Camel and Spring Boot.  
-The goal was to combine file ingestion, validation, transformation, external API communication, and error handling into a single cohesive route.
+On Day 6, we evolved our Camel mini-project from basic routing into a more production-style integration flow by introducing enterprise integration patterns and robust error handling.
 
-This represents a realistic enterprise integration scenario.
+This session focused on:
+
+- Content-Based Routing  
+- Dead Letter Channel  
+- Retry policies  
+- Structured logging  
+- Controlled failure management  
+
+The goal was to build a resilient message processing pipeline capable of handling real-world failure scenarios.
 
 ---
 
 ## Objectives
 
-- Build a full Apache Camel integration route
-- Implement custom processors
-- Validate and transform incoming data
-- Call an external HTTP service
-- Handle errors gracefully
-- Archive processed files
+By the end of Day 6, the application is able to:
+
+- Dynamically route messages based on message content  
+- Retry failed messages automatically  
+- Send permanently failed messages to a dead-letter folder  
+- Log retry attempts with appropriate log levels  
+- Separate high-value and low-value order processing paths  
 
 ---
 
-## What I Built
+## Architecture Flow
+```pgsql
+File Input (orders/)
+↓
+Validation Processor
+↓
+Transformation Processor
+↓
+Content-Based Router
+├── High Value Orders (> 500)
+│ ├── HTTP Call
+│ └── Archive → high-value/
+│
+└── Low Value Orders (≤ 500)
+└── Archive → low-value/
 
-A working integration pipeline:
-
+Failures (after retries)
+↓
+Dead Letter Folder (error/)
 ```
-File → Validate → Transform → HTTP Call → Archive
+
+## Project structure
+
+```pgsql
+day-5-camel-mini-project/
+│
+├── pom.xml
+│
+└── src/
+└── main/
+├── java/
+│ └── com/example/camel/
+│ ├── Application.java
+│ ├── OrderRoute.java
+│ ├── OrderProcessor.java
+│ └── ValidationProcessor.java
+│
+└── resources/
+└── data/
+├── orders/
+├── archive/
+│ ├── high-value/
+│ └── low-value/
+└── error/
 ```
 
-The application:
-
-1. Reads order files from a directory
-2. Validates file format
-3. Transforms raw CSV data into a Java object
-4. Calls an external REST API
-5. Archives successful files
-6. Redirects failed files to an error folder
 
 ---
 
-## Key Concepts Practiced
+## Key Implementation Details
 
-- Apache Camel RouteBuilder
-- Custom Processors (`Processor` interface)
-- Dependency Injection in routes
-- Global Exception Handling (`onException`)
-- File Component
-- HTTP Component
-- Spring Boot Auto Configuration
-- Integration project structure
-
----
-
-## Implementation Details
-
-### File Input Location
-
-```
-src/main/resources/data/orders
-```
-
-### Expected File Format
-
-```
-orderId,customerName,amount
-```
-
-Example:
-
-```
-101,Ian,250
-```
-
-### Error Handling Strategy
-
-Global exception handling is configured using:
+### 5.1 Global Error Handler (Dead Letter Channel)
 
 ```java
-onException(Exception.class)
-    .handled(true)
-    .to("file:src/main/resources/data/error");
-```
-
-Any invalid or malformed file is redirected automatically.
-
----
-
-## Project Structure
+errorHandler(deadLetterChannel("file:src/main/resources/data/error")
+    .maximumRedeliveries(3)
+    .redeliveryDelay(2000)
+    .retryAttemptedLogLevel(LoggingLevel.WARN));
 
 ```
-camel-day5-mini-project/
-│── pom.xml
-└── src/main/
-    ├── java/com/example/camel/
-    │   ├── CamelIntegrationApplication.java
-    │   ├── model/Order.java
-    │   ├── processors/
-    │   │     ├── OrderValidationProcessor.java
-    │   │     └── OrderTransformationProcessor.java
-    │   └── routes/OrderIntegrationRoute.java
-    │
-    └── resources/
-        └── data/
-            ├── orders/
-            ├── archive/
-            └── error/
+
+**Behavior**
+
+- Retries each failed message up to 3 times
+
+- Waits 2 seconds between retry attempts
+
+- Logs retry attempts at WARN level
+
+- Moves the message to error/ if all retries fail
+
+This implements the Dead Letter Channel pattern, a fundamental Enterprise Integration Pattern (EIP).
+
+**5.2 Content based Router**
+```java
+.choice()
+    .when(simple("${body.amount} > 500"))
+        .log("High value order detected")
+        .to("https://jsonplaceholder.typicode.com/posts/1")
+        .to("file:src/main/resources/data/archive/high-value")
+    .otherwise()
+        .log("Low value order detected")
+        .to("file:src/main/resources/data/archive/low-value")
+.end();
 ```
 
----
+**Behavior**
 
-## How to Run
+- Orders above 500 are classified as high-value
 
-### 1. Build
+- High-value orders trigger an HTTP call
 
-```
-mvn clean install
-```
+- Low-value orders are directly archived
 
-### 2. Start Application
+- Routing decisions are made dynamically at runtime
 
-```
-mvn spring-boot:run
-```
+This implements the Content-Based Router pattern.
 
-### 3. Test
+## Test Scenarios
+ Scenario 1 – Low Value Order
 
-Place a file inside:
-
-```
-src/main/resources/data/orders/
+Input (place inside orders/):
+```java
+101,Ian,200
 ```
 
-With content:
+Expected Result:
 
+- Processed successfully
+
+- Archived inside:
+
+```yaml
+archive/low-value/
 ```
-101,Ian,250
+
+ Scenario 2 – High Value Order
+
+Input:
+```java
+102,Ian,1000
 ```
 
-The file will:
+Expected Result:
 
-- Be processed
-- Trigger an HTTP call
-- Move to the archive folder
+- HTTP call executed
 
-If invalid, it moves to the error folder.
+- Archived inside:
 
----
+```pqsql
+archive/high-value/
+```
 
-## Challenges Faced
+Scenario 3 – Invalid Order Format
 
-- Maven dependency resolution issues
-- Classpath synchronization in IDE
-- Public class/file naming mismatches
-- Test compilation conflicts
-- Ensuring correct Spring Boot + Camel starter usage
+Input:
+```java
+bad,data
+```
 
----
+Expected Result:
 
-## Reflection
+Retry 3 times
 
-This day consolidated multiple integration concepts into a single working system.  
-It moved from isolated Camel components to a realistic end-to-end workflow.
+Warning logs displayed
 
-Understanding how processors, routing logic, and error handling work together is a key milestone in mastering integration frameworks.
+File moved to:
 
+error/
+
+## Enterprise Integration Patterns Practiced
+
+During Day 6, we implemented:
+
+- Content-Based Router
+
+- Dead Letter Channel
+
+- Retry Pattern
+
+- Processor Pattern
+
+- Message Transformation
+
+- Fault-Tolerant Routing
+
+These patterns are foundational for designing enterprise-grade integration systems.
+
+## Logging & Observability
+
+We enhanced visibility by:
+
+- Logging route entry and exit
+
+- Logging retry attempts at WARN level
+
+- Logging routing decisions
+
+- Logging final error handling outcomes
+
+This improves traceability and operational monitoring.
+
+## Key Lessons
+
+Day 6 shifted focus from simple routing to:
+
+- Designing resilient integrations
+
+- Handling failure deterministically
+
+- Building retry-aware systems
+
+- Applying real Enterprise Integration Patterns
+
+- Structuring production-ready message flows
+
+We moved from “it works” to “it works reliably.”
+
+## Key Takeaway
+
+In real-world integration systems:
+
+- Failure is expected.
+- Retries must be controlled.
+- Errors must be captured.
+- Routing must be deterministic.
+
+Today’s implementation ensures:
+
+- Controlled retries
+
+- Clear failure handling
+
+- Intelligent routing
+
+- Improved observability
